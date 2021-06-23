@@ -44,7 +44,7 @@
 #include <ti/display/Display.h>
 
 /* Module Header */
-#include <ti/sail/bme280/bme28 0.h>
+#include <ti/sail/bme280/bme280.h>
 
 /* Driver configuration */
 #include "ti_drivers_config.h"

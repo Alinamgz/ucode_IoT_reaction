@@ -33,32 +33,123 @@
 /*
  *    ======== i2copt3001.c ========
  */
+#include <stdint.h>
+#include <stddef.h>
 
 /* POSIX Header files */
+#include <pthread.h>
+#include <semaphore.h>
+#include <unistd.h>
 
-#include "includes.h"
-#include "defines.h"
-#include "glob_vars.h"
-#include "functions.h"
+/* Driver Header files */
+#include <ti/drivers/GPIO.h>
+#include <ti/drivers/I2C.h>
+#include <ti/display/Display.h>
 
-// functions
-void opt3001Callback(uint_least8_t index);
-void *opt3001InterruptTask(void *arg0);
+/* Module Header */
+#include <ti/sail/opt3001/opt3001.h>
 
-inline void say_err(char *where_err);
-static inline void config_i2c(void);
+/* Driver configuration */
+#include "ti_drivers_config.h"
+
+static Display_Handle display;
+
+#define SAMPLE_TIME      1        /*In seconds*/
+#define HIGH_LIMIT       25000.0F
+#define LOW_LIMIT        100.0F
+
+#define OPT_TASK_STACK_SIZE   768
+
+#define CONFIG_OPT3001_LIGHT 0
+#define CONFIG_OPT3001_COUNT 1
+
+OPT3001_Handle opt3001Handle = NULL;
+OPT3001_Params opt3001Params;
+
+/* Please check <ti/sail/opt3001/opt3001.h> file to know more about OPT3001_HWAttrs and OPT3001_Config structures */
+OPT3001_Object OPT3001_object[CONFIG_OPT3001_COUNT];
+
+const OPT3001_HWAttrs OPT3001_hwAttrs[CONFIG_OPT3001_COUNT] = {
+    {
+#ifdef CONFIG_I2C_OPT_BOOSTXL_SENSORS_OPT3001_ADDR // BOOSTXL-SENSORS
+        .slaveAddress = OPT3001_SA4,
+#else // BOOSTXL-BASSENSORS
+        .slaveAddress = OPT3001_SA1,
+#endif
+        .gpioIndex = CONFIG_GPIO_OPT3001_INT,
+    },
+};
+
+const OPT3001_Config OPT3001_config[] = {
+    {
+        .hwAttrs = &OPT3001_hwAttrs[0],
+        .object  = &OPT3001_object[0],
+    },
+    {NULL, NULL},
+};
+
+/* Global lux values which may be accessed from GUI Composer App */
+float lux;
+
+/* Global sample rate which may be accessed and set from GUI Composer App */
+volatile uint16_t sampleTime;
+
+sem_t opt3001Sem;
+
+/*
+ *  ======== opt3001Callback ========
+ *  When a fault condition is met on the opt3001 hardware, the INT pin is
+ *  asserted generating an interrupt. This callback function serves as an ISR
+ *  for a single opt3001 sensor.
+ */
+void opt3001Callback(uint_least8_t index) {
+
+    sem_post(&opt3001Sem);
+}
+
+/*
+ *  ======== opt3001InterruptTask ========
+ *  This task is unblocked when the INT pin is asserted and generates an
+ *  interrupt. When the OPT3001 is in LATCH mode, the configuration register
+ *  must be read to the clear the INT pin.
+ */
+void *opt3001InterruptTask(void *arg0)
+{
+    uint16_t data;
+
+    while (1)
+    {
+
+        /* Pend on the semaphore, opt3001Sem */
+        if (0 == sem_wait(&opt3001Sem)) {
+
+            /* Read config register, resetting the INT pin */
+            OPT3001_readRegister(opt3001Handle, &data, OPT3001_CONFIG);
+
+            if (data & OPT3001_FL) {
+                Display_print0(display, 0, 0, "ALERT INT: Lux Low\n");
+            }
+
+            if (data & OPT3001_FH) {
+                Display_print0(display, 0, 0, "ALERT INT: Lux High\n");
+            }
+        }
+    }
+}
+
 /*
  *  ======== mainThread ========
  */
-void *mainThread(void *arg0) {
-//    I2C_Handle      i2cHandle;
-//    I2C_Params      i2cParams;
-//    pthread_t alertTask;
-//    pthread_attr_t       pAttrs;
-//    int             retc;
-//    float hiLim = HIGH_LIMIT;
-//    float loLim = LOW_LIMIT;
-//    sampleTime  = SAMPLE_TIME;
+void *mainThread(void *arg0)
+{
+    I2C_Handle      i2cHandle;
+    I2C_Params      i2cParams;
+    pthread_t alertTask;
+    pthread_attr_t       pAttrs;
+    int             retc;
+    float hiLim = HIGH_LIMIT;
+    float loLim = LOW_LIMIT;
+    sampleTime  = SAMPLE_TIME;
 
     /* Call driver init functions */
     GPIO_init();
@@ -161,79 +252,5 @@ void *mainThread(void *arg0) {
         Display_print1(display, 0, 0, "Lux: %f\n\n", lux);
 
         sleep(sampleTime);
-    }
-}
-
-// ===========================================================================
-// ============================== SAY ERR ====================================
-// ===========================================================================
-inline void say_err(char *where_err) {
-
-    Display_printf(display_handle, 0, 0, "\n!!! %s ERR !!!\n", where_err);
-
-    while (1) {
-        GPIO_toggle(CONFIG_GPIO_LED_RED);
-        usleep(250000);
-    }
-}
-
-//  =========================================================================
-/*
- *  ======== opt3001Callback ========
- *  When a fault condition is met on the opt3001 hardware, the INT pin is
- *  asserted generating an interrupt. This callback function serves as an ISR
- *  for a single opt3001 sensor.
- */
-void opt3001Callback(uint_least8_t index) {
-
-    sem_post(&opt3001Sem);
-}
-
-//  =========================================================================
-/*
- *  ======== opt3001InterruptTask ========
- *  This task is unblocked when the INT pin is asserted and generates an
- *  interrupt. When the OPT3001 is in LATCH mode, the configuration register
- *  must be read to the clear the INT pin.
- */
-void *opt3001InterruptTask(void *arg0) {
-    uint16_t data;
-
-    while (1) {
-        /* Pend on the semaphore, opt3001Sem */
-        if (0 == sem_wait(&opt3001Sem)) {
-
-            /* Read config register, resetting the INT pin */
-            OPT3001_readRegister(opt3001_handle, &data, OPT3001_CONFIG);
-
-            if (data & OPT3001_FL) {
-                Display_print0(display_handle, 0, 0, "ALERT INT: Lux Low\n");
-            }
-
-            if (data & OPT3001_FH) {
-                Display_print0(display_handle, 0, 0, "ALERT INT: Lux High\n");
-            }
-        }
-    }
-}
-
-//  =========================================================================
-static inline void config_i2c(void) {
-    I2C_init();
-
-    I2C_Params_init(&i2c_params);
-
-    i2c_params.bitRate = I2C_400kHz;
-    i2c_params.transferMode = I2C_MODE_BLOCKING;
-    i2c_params.transferCallbackFxn = NULL;
-
-    i2c_handle = I2C_open(CONFIG_I2C_OPT, &i2c_params);
-
-    if (i2c_handle) {
-        Display_printf(display_handle, 0, 0, "I2C initialized\n");
-    }
-    else {
-        say_err("I2C_open()");
-
     }
 }
