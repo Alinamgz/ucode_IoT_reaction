@@ -202,20 +202,34 @@ static float moving_avg_filter(float raw_value, float *buf, uint8_t buf_len) {
 
 //======================== CHECK value & SWITCH LED ==================================
 static void check_filtered_data(float cur_lux, float cur_tmp) {
-    if (cur_lux >= min_lux && cur_lux <= max_lux) {
+//    if (cur_lux >= min_lux && cur_lux <= max_lux) {
+//        GPIO_write(CONFIG_GPIO_LED_Green, CONFIG_GPIO_LED_ON);
+//        Display_printf(display, 0, 0, "------    \tLux hobba!\t------\n\n\r");
+//    }
+//    else {
+//        GPIO_write(CONFIG_GPIO_LED_Green, CONFIG_GPIO_LED_OFF);
+//    }
+//
+//    if (cur_tmp <= max_tmp && cur_tmp >= min_tmp) {
+//        Display_printf(display, 0, 0, "------\tTemperature hobba!\t------\n\n\r");
+//        GPIO_write(CONFIG_GPIO_LED_Red, CONFIG_GPIO_LED_ON);
+//    }
+//    else {
+//        GPIO_write(CONFIG_GPIO_LED_Red, CONFIG_GPIO_LED_OFF);
+//    }
+    if (cur_lux < min_lux) {
         GPIO_write(CONFIG_GPIO_LED_Green, CONFIG_GPIO_LED_ON);
         Display_printf(display, 0, 0, "------    \tLux hobba!\t------\n\n\r");
     }
-    else {
+    else if (cur_lux > max_lux) {
         GPIO_write(CONFIG_GPIO_LED_Green, CONFIG_GPIO_LED_OFF);
     }
 
-    if (cur_tmp <= max_tmp && cur_tmp >= min_tmp) {
+    if (cur_tmp < min_tmp) {
+        GPIO_write(CONFIG_GPIO_LED_Red, CONFIG_GPIO_LED_OFF);
+    }
+    else if (cur_tmp > max_tmp) {
         Display_printf(display, 0, 0, "------\tTemperature hobba!\t------\n\n\r");
         GPIO_write(CONFIG_GPIO_LED_Red, CONFIG_GPIO_LED_ON);
     }
-    else {
-        GPIO_write(CONFIG_GPIO_LED_Red, CONFIG_GPIO_LED_OFF);
-    }
-
 }
