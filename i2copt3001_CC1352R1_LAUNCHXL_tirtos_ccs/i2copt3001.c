@@ -30,216 +30,47 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*
- *    ======== i2copt3001.c ========
- */
-#include <stdint.h>
-#include <stddef.h>
 
-/* POSIX Header files */
-#include <pthread.h>
-#include <semaphore.h>
-#include <unistd.h>
+//=============================== Includes & Defines ===============================
+#include "includes_n_defines.h"
+#include "i2copt3001_config.h"
 
-/* Driver Header files */
-#include <ti/drivers/GPIO.h>
-#include <ti/drivers/I2C.h>
-#include <ti/display/Display.h>
 
-/* Module Header */
-#include <ti/sail/opt3001/opt3001.h>
-
-/* Driver configuration */
-#include "ti_drivers_config.h"
-
+/***** Variables *****/
 static Display_Handle display;
 
-#define SAMPLE_TIME      1        /*In seconds*/
-#define HIGH_LIMIT       25000.0F
-#define LOW_LIMIT        100.0F
+static I2C_Handle      i2cHandle;
+static I2C_Params      i2cParams;
 
-#define OPT_TASK_STACK_SIZE   768
+static OPT3001_Handle opt3001Handle;
+static OPT3001_Params opt3001Params;
 
-#define CONFIG_OPT3001_LIGHT 0
-#define CONFIG_OPT3001_COUNT 1
+s32 uncomp_temperature   = 0;
 
-OPT3001_Handle opt3001Handle = NULL;
-OPT3001_Params opt3001Params;
-
-/* Please check <ti/sail/opt3001/opt3001.h> file to know more about OPT3001_HWAttrs and OPT3001_Config structures */
-OPT3001_Object OPT3001_object[CONFIG_OPT3001_COUNT];
-
-const OPT3001_HWAttrs OPT3001_hwAttrs[CONFIG_OPT3001_COUNT] = {
-    {
-#ifdef CONFIG_I2C_OPT_BOOSTXL_SENSORS_OPT3001_ADDR // BOOSTXL-SENSORS
-        .slaveAddress = OPT3001_SA4,
-#else // BOOSTXL-BASSENSORS
-        .slaveAddress = OPT3001_SA1,
-#endif
-        .gpioIndex = CONFIG_GPIO_OPT3001_INT,
-    },
-};
-
-const OPT3001_Config OPT3001_config[] = {
-    {
-        .hwAttrs = &OPT3001_hwAttrs[0],
-        .object  = &OPT3001_object[0],
-    },
-    {NULL, NULL},
-};
-
-/* Global lux values which may be accessed from GUI Composer App */
 float lux;
+float comp_temperature;
 
-/* Global sample rate which may be accessed and set from GUI Composer App */
-volatile uint16_t sampleTime;
-
-sem_t opt3001Sem;
-
-/*
- *  ======== opt3001Callback ========
- *  When a fault condition is met on the opt3001 hardware, the INT pin is
- *  asserted generating an interrupt. This callback function serves as an ISR
- *  for a single opt3001 sensor.
- */
-void opt3001Callback(uint_least8_t index) {
-
-    sem_post(&opt3001Sem);
-}
-
-/*
- *  ======== opt3001InterruptTask ========
- *  This task is unblocked when the INT pin is asserted and generates an
- *  interrupt. When the OPT3001 is in LATCH mode, the configuration register
- *  must be read to the clear the INT pin.
- */
-void *opt3001InterruptTask(void *arg0)
-{
-    uint16_t data;
-
-    while (1)
-    {
-
-        /* Pend on the semaphore, opt3001Sem */
-        if (0 == sem_wait(&opt3001Sem)) {
-
-            /* Read config register, resetting the INT pin */
-            OPT3001_readRegister(opt3001Handle, &data, OPT3001_CONFIG);
-
-            if (data & OPT3001_FL) {
-                Display_print0(display, 0, 0, "ALERT INT: Lux Low\n");
-            }
-
-            if (data & OPT3001_FH) {
-                Display_print0(display, 0, 0, "ALERT INT: Lux High\n");
-            }
-        }
-    }
-}
+/***** Functions *****/
+extern s32 bme280_data_readout_template(I2C_Handle i2cHndl);
+static inline void config_display(void);
+static inline void config_I2C(void);
+static inline void config_sensors(void);
 
 /*
  *  ======== mainThread ========
  */
-void *mainThread(void *arg0)
-{
-    I2C_Handle      i2cHandle;
-    I2C_Params      i2cParams;
-    pthread_t alertTask;
-    pthread_attr_t       pAttrs;
-    int             retc;
-    float hiLim = HIGH_LIMIT;
-    float loLim = LOW_LIMIT;
-    sampleTime  = SAMPLE_TIME;
-
+void *mainThread(void *arg0) {
     /* Call driver init functions */
     GPIO_init();
     I2C_init();
     OPT3001_init();
 
-    /* Open the HOST display for output */
-    display = Display_open(Display_Type_UART, NULL);
-    if (display == NULL) {
-        while (1);
-    }
 
-    /* Turn on user LED */
-    GPIO_write(CONFIG_LED_0_GPIO, CONFIG_GPIO_LED_ON);
+    config_display();
+    config_I2C();
+    config_sensors();
 
-    Display_print0(display, 0, 0, "Starting the i2copt3001 example\n");
-
-    /* Create I2C for usage */
-    I2C_Params_init(&i2cParams);
-    i2cParams.bitRate = I2C_400kHz;
-    i2cHandle = I2C_open(CONFIG_I2C_OPT, &i2cParams);
-    if (i2cHandle == NULL) {
-        Display_print0(display, 0, 0, "Error Initializing I2C\n");
-        while (1);
-    }
-    else {
-        Display_print0(display, 0, 0, "I2C Initialized!\n");
-    }
-	
-    if(0 != sem_init(&opt3001Sem,0,0))
-    {
-        /* sem_init() failed */
-        Display_print0(display, 0, 0, "opt3001Sem Semaphore creation failed");
-        while (1);
-    }
-	
-    pthread_attr_init(&pAttrs);
-    pthread_attr_setstacksize(&pAttrs, OPT_TASK_STACK_SIZE);
-    retc = pthread_create(&alertTask, &pAttrs, opt3001InterruptTask, NULL);
-    if (retc != 0) {
-        /* pthread_create() failed */
-        Display_print0(display, 0, 0, "Alert Task creation failed");
-        while (1);
-    }
-
-    /* Initialize opt3001Params structure to defaults */
-    OPT3001_Params_init(&opt3001Params);
-
-    /* Callback for INT pin event */
-    opt3001Params.callback = opt3001Callback;
-
-    /* Open OPT3001 sensor with custom parameters */
-    opt3001Handle = OPT3001_open(CONFIG_OPT3001_LIGHT, i2cHandle,
-            &opt3001Params);
-
-    /* Check if the open is successful */
-    if(opt3001Handle == NULL) {
-        Display_print0(display, 0, 0, "OPT3001 Open Failed!");
-        while(1);
-    }
-
-    /* Allow the sensor hardware to complete its first conversion */
-    sleep(1);
-
-    /* Set Lux High and Low Limit Registers */
-    if (!OPT3001_setLuxLimits(opt3001Handle, hiLim, loLim)) {
-        Display_print0(display, 0, 0, "Setting Lux Limits Failed!");
-
-    }
-
-    /* Read Lux Limits written to OPT3001 limit registers */
-    if (!OPT3001_getLuxLimits(opt3001Handle, &hiLim, &loLim)) {
-        Display_print0(display, 0, 0, "Getting Lux Limits Failed!");
-    }
-
-    /* Print set Lux Limits */
-    Display_print1(display, 0, 0, "High Lux Limit Set:\t %f\n", hiLim);
-    Display_print1(display, 0, 0, "Low Lux Limit Set:\t %f\n", loLim);
-
-    Display_print0(display, 0, 0, "Taking Preliminary Reading...\n\n");
-
-    /* Get current Lux */
-    if (!OPT3001_getLux(opt3001Handle, &lux)) {
-        Display_print0(display, 0, 0, "OPT3001 sensor read failed");
-    }
-
-    Display_print1(display, 0, 0, "Lux: %f\n", lux);
-
-    /* Enable interrupts from OPT3001 */
-    OPT3001_enableInterrupt(opt3001Handle);
+    Display_print0(display, 0, 0, "Ama ready \r\n");
 
     /* Begin infinite task loop */
     while(1) {
@@ -251,6 +82,73 @@ void *mainThread(void *arg0)
 
         Display_print1(display, 0, 0, "Lux: %f\n\n", lux);
 
-        sleep(sampleTime);
+        if (BME280_INIT_VALUE == bme280_read_uncomp_temperature(&uncomp_temperature)) {
+            comp_temperature = (float)bme280_compensate_temperature_double(uncomp_temperature);
+        }
+        else {
+            Display_print0(display, 0, 0, "Error reading from the bme280 sensor\n");
+        }
+
+//               sleep(1);
+        sleep(SAMPLE_TIME);
     }
+}
+
+//==================================================================================
+//================================ DISPLAY =========================================
+
+static inline void config_display(void) {
+    display = Display_open(Display_Type_UART, NULL);
+
+    if (display == NULL) {
+        while (1) {
+            GPIO_toggle(CONFIG_GPIO_LED_Red);
+            usleep(25000);
+        }
+    }
+    else {
+        Display_printf(display, 0, 0, "...\n\r");
+    }
+}
+
+//================================== I2C ============================================
+static inline void config_I2C(void) {
+    I2C_Params_init(&i2cParams);
+    i2cParams.bitRate = I2C_400kHz;
+    i2cHandle = I2C_open(CONFIG_I2C_SENSORS, &i2cParams);
+
+    if (i2cHandle == NULL) {
+        Display_print0(display, 0, 0, "Error Initializing I2C\n");
+        while (1) {
+            GPIO_toggle(CONFIG_GPIO_LED_Red);
+            usleep(25000);
+        }
+    }
+    else {
+        Display_print0(display, 0, 0, "I2C Initialized!\n");
+    }
+}
+
+//================================ SENSORS ==========================================
+static inline void config_sensors(void) {
+
+    /* Initialize the OPT3001 Sensor */
+    OPT3001_Params_init(&opt3001Params);
+    opt3001Handle = OPT3001_open(CONFIG_OPT3001_LIGHT, i2cHandle, &opt3001Params);
+
+    if(opt3001Handle == NULL) {
+        Display_print0(display, 0, 0, "OPT3001 Open Failed!");
+        while(1) {
+            GPIO_toggle(CONFIG_GPIO_LED_Red);
+            usleep(25000);
+        }
+    }
+
+    sleep(1);
+
+/* Initialize the BME Sensor */
+    if(BME280_INIT_VALUE != bme280_data_readout_template(i2cHandle)) {
+        Display_print0(display, 0, 0, "Error Initializing bme280\n");
+    }
+    bme280_set_power_mode(BME280_NORMAL_MODE);
 }

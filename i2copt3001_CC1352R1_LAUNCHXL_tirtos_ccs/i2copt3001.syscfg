@@ -1,80 +1,73 @@
-/*
- * Copyright (c) 2019-2020, Texas Instruments Incorporated
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * *  Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *
- * *  Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * *  Neither the name of Texas Instruments Incorporated nor the names of
- *    its contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+/**
+ * These arguments were used when this file was generated. They will be automatically applied on subsequent loads
+ * via the GUI or CLI. Run CLI with '--help' for additional information on how to override these arguments.
+ * @cliArgs --board "/ti/boards/CC1352R1_LAUNCHXL" --product "simplelink_cc13x2_26x2_sdk@3.30.00.03" --product "sail@1.50.00.00"
+ * @versions {"data":"2021031521","timestamp":"2021031521","tool":"1.8.0+1863","templates":null}
  */
-// @cliArgs --board /ti/boards/CC1352R1_LAUNCHXL
+const BOOSTXL_BASSENSORS = scripting.addHardware("/ti/boards/boosterpacks/BOOSTXL-BASSENSORS");
+const BOOSTXL_SENSORS = scripting.addHardware("/ti/boards/boosterpacks/BOOSTXL-SENSORS");
 
-/*
- *  i2copt3001.syscfg
+/**
+ * Import the modules used in this configuration.
  */
- 
-/* ======== Board ======== */
-var board = system.deviceData.board.name;
+const Display  = scripting.addModule("/ti/display/Display");
+const Display1 = Display.addInstance();
+const GPIO     = scripting.addModule("/ti/drivers/GPIO");
+const GPIO1    = GPIO.addInstance();
+const GPIO2    = GPIO.addInstance();
+const GPIO3    = GPIO.addInstance();
+const GPIO4    = GPIO.addInstance();
+const I2C      = scripting.addModule("/ti/drivers/I2C");
+const I2C1     = I2C.addInstance();
+const RTOS     = scripting.addModule("/ti/drivers/RTOS");
 
-/* ======== Sensors BoosterPack ======== */
-if (board.match(/MSP.EXP432E/)) {
-    var Sensors = scripting.addHardware("/ti/boards/boosterpacks/BOOSTXL-BASSENSORS", "boosterpack2");
-	var Sensors1 = scripting.addHardware("/ti/boards/boosterpacks/BOOSTXL-SENSORS", "boosterpack2");
-}
-else {
-    var Sensors = scripting.addHardware("/ti/boards/boosterpacks/BOOSTXL-BASSENSORS");
-	var Sensors1 = scripting.addHardware("/ti/boards/boosterpacks/BOOSTXL-SENSORS");
-}
+/**
+ * Write custom configuration values to the imported modules.
+ */
+Display1.$name                    = "CONFIG_Display_0";
+Display1.$hardware                = system.deviceData.board.components.XDS110UART;
+Display1.uart.$name               = "CONFIG_UART_0";
+Display1.uart.txPinInstance.$name = "CONFIG_PIN_0";
+Display1.uart.rxPinInstance.$name = "CONFIG_PIN_1";
 
-/* ======== RTOS ======== */
-var RTOS = scripting.addModule("/ti/drivers/RTOS");
-RTOS.name = "TI-RTOS";
+GPIO1.$hardware         = system.deviceData.board.components.LED_RED;
+GPIO1.$name             = "CONFIG_GPIO_LED_Red";
+GPIO1.pinInstance.$name = "CONFIG_PIN_4";
 
-/* ======== Display ======== */
-var Display = scripting.addModule("/ti/display/Display");
-var displayUART = Display.addInstance();
-displayUART.$hardware = system.deviceData.board.components.XDS110UART;
+GPIO2.$name             = "CONFIG_GPIO_OPT3001_INT";
+GPIO2.$hardware         = BOOSTXL_BASSENSORS.components.OPT3001.subComponents.INTERRUPT;
+GPIO2.pull              = "Pull Up";
+GPIO2.interruptTrigger  = "Falling Edge";
+GPIO2.pinInstance.$name = "CONFIG_PIN_5";
 
-/* ======== I2C ======== */
-var I2C = scripting.addModule("/ti/drivers/I2C");
-var i2c = I2C.addInstance();
-i2c.$name = "CONFIG_I2C_OPT";
-i2c.$hardware = Sensors.components.OPT3001.subComponents.I2C;
+GPIO3.$name             = "CONFIG_GPIO_OPT3001_PWR";
+GPIO3.$hardware         = BOOSTXL_BASSENSORS.components.OPT3001.subComponents.POWER;
+GPIO3.pinInstance.$name = "CONFIG_PIN_6";
 
-/* ======== GPIO ======== */
-var GPIO = scripting.addModule("/ti/drivers/GPIO");
-var gpio1 = GPIO.addInstance();
-gpio1.$hardware = system.deviceData.board.components.LED0;
-gpio1.$name = "CONFIG_LED_0_GPIO";
+GPIO4.$name             = "CONFIG_GPIO_LED_Green";
+GPIO4.$hardware         = system.deviceData.board.components.LED_GREEN;
+GPIO4.pinInstance.$name = "CONFIG_PIN_2";
 
-var gpio2 = GPIO.addInstance();
-gpio2.$name = "CONFIG_GPIO_OPT3001_INT";
-gpio2.$hardware = Sensors.components.OPT3001.subComponents.INTERRUPT;
-gpio2.pull = "Pull Up";
-gpio2.interruptTrigger = "Falling Edge";
+I2C1.$hardware            = BOOSTXL_SENSORS.components.SENSORS_I2C;
+I2C1.$name                = "CONFIG_I2C_SENSORS";
+I2C1.sdaPinInstance.$name = "CONFIG_PIN_7";
+I2C1.clkPinInstance.$name = "CONFIG_PIN_8";
 
-var gpio3 = GPIO.addInstance();
-gpio3.$name = "CONFIG_GPIO_OPT3001_PWR";
-gpio3.$hardware = Sensors.components.OPT3001.subComponents.POWER;
+const CCFG              = scripting.addModule("/ti/devices/CCFG", {}, false);
+CCFG.ccfgTemplate.$name = "ti_devices_CCFGTemplate0";
+
+/**
+ * Pinmux solution for unlocked pins/peripherals. This ensures that minor changes to the automatic solver in a future
+ * version of the tool will not impact the pinmux you originally saw.  These lines can be completely deleted in order to
+ * re-solve from scratch.
+ */
+Display1.uart.uart.$suggestSolution       = "UART1";
+Display1.uart.uart.txPin.$suggestSolution = "boosterpack.4";
+Display1.uart.uart.rxPin.$suggestSolution = "boosterpack.3";
+GPIO1.gpioPin.$suggestSolution            = "boosterpack.39";
+GPIO2.gpioPin.$suggestSolution            = "boosterpack.25";
+GPIO3.gpioPin.$suggestSolution            = "boosterpack.27";
+GPIO4.gpioPin.$suggestSolution            = "boosterpack.40";
+I2C1.i2c.$suggestSolution                 = "I2C0";
+I2C1.i2c.sdaPin.$suggestSolution          = "boosterpack.10";
+I2C1.i2c.sclPin.$suggestSolution          = "boosterpack.9";
