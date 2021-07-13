@@ -1,5 +1,5 @@
 # &ensp;Reaction
-This challenge is made toearn how to process information from sensors correctly, get aqcuanted with basic data filtering algorithms (median filter, moving average filter, low pass filter etc).
+This challenge is made to learn how to process information from sensors correctly, get aqcuanted with basic data filtering algorithms (median filter, moving average filter, low pass filter etc).
 
 ## &ensp; &ensp;  <b> How to run this project? </b>
 
